@@ -32,15 +32,23 @@ bot = get_bot()
 
 
 def _retrieve_data(update=False):
+    _update_contact(bot, update)
     _update_group(bot, update)
     _update_mp(bot, update)
-    _update_contact(bot, update)
+
+
+def _get_self(bot):
+    myself = db.session.query(User).get(bot.self.puid)
+    if myself is None:
+        myself = User.create(id=bot.self.puid, **{
+            field: getattr(bot.self, field) for field in USER_FIELD})
+    return myself
 
 
 def _update_group(bot, update=False):
     session = db.session
     wx_groups = bot.groups(update)
-    myself = session.query(User).get(bot.self.puid)
+    myself = _get_self(bot)
     wx_ids = set([g.puid for g in wx_groups])
     groups = session.query(Group).filter(Group.owner_id==bot.self.puid).all()
     local_ids = set([g.id for g in groups])
@@ -84,13 +92,16 @@ def _update_group(bot, update=False):
 
 def _update_mp(bot, update=False):
     session = db.session
-    myself = session.query(User).get(bot.self.puid)
+    myself = _get_self(bot)
     wx_mps = bot.mps(update)
     local_ids = set([m.id for m in myself.mps])
     wx_ids = set([u.puid for u in wx_mps])
     need_add = wx_ids.difference(local_ids)
     if need_add:
         for m in wx_mps:
+            # see https://github.com/dongweiming/wechat-admin/issues/14
+            if m.puid is None:
+                continue
             if m.puid in need_add:
                 mp = MP.create(id=m.puid, **{field: getattr(m, field)
                                              for field in MP_FIELD})
@@ -107,7 +118,7 @@ def _update_mp(bot, update=False):
 
 def _update_contact(bot, update=False):
     session = db.session
-    myself = session.query(User).get(bot.self.puid)
+    myself = _get_self(bot)
     wx_friends = bot.friends(update)
     local_ids = set([u.id for u in myself.friends.all()])
     wx_ids = set([u.puid for u in wx_friends])
